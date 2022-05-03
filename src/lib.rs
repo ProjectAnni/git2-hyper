@@ -55,7 +55,7 @@ struct HyperTransport {
     /// This is an empty string until the first action is performed.
     /// If there is an HTTP redirect, this will be updated with the new URL.
     base_url: Arc<Mutex<String>>,
-    runtime: Arc<tokio::runtime::Runtime>,
+    runtime: Option<Arc<tokio::runtime::Runtime>>,
 }
 
 struct HyperSubtransport {
@@ -106,9 +106,20 @@ fn factory(
         HyperTransport {
             handle,
             base_url: Arc::new(Mutex::new(String::new())),
-            runtime: Arc::new(tokio::runtime::Runtime::new().unwrap()),
+            runtime: if tokio::runtime::Handle::try_current().is_ok() {
+                None
+            } else {
+                Some(Arc::new(tokio::runtime::Runtime::new().unwrap()))
+            },
         },
     )
+}
+
+impl HyperTransport {
+    fn runtime_handle(&self) -> tokio::runtime::Handle {
+        tokio::runtime::Handle::try_current()
+            .unwrap_or_else(|_| self.runtime.as_ref().unwrap().handle().clone())
+    }
 }
 
 impl SmartSubtransport for HyperTransport {
@@ -138,7 +149,7 @@ impl SmartSubtransport for HyperTransport {
             method,
             response: None,
             sent_request: false,
-            runtime_handle: self.runtime.handle().clone(),
+            runtime_handle: self.runtime_handle(),
         }))
     }
 
